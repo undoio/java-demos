@@ -1,0 +1,129 @@
+apiVersion: "sparkoperator.k8s.io/v1beta2"
+kind: SparkApplication
+metadata:
+  name: spark-test-app
+  namespace: default
+spec:
+  type: Scala
+  mode: cluster
+  image: "localhost:5000/spark-custom:latest"
+  imagePullPolicy: Always
+  mainClass: TestSparkApp
+  mainApplicationFile: "local:///opt/spark/examples/jars/spark-test-app-assembly-0.1.0.jar"
+  sparkVersion: "3.4.0"
+  restartPolicy:
+    type: Never
+  sparkConf:
+    # Dynamic allocation settings
+    "spark.dynamicAllocation.enabled": "true"
+    "spark.dynamicAllocation.minExecutors": "1"
+    "spark.dynamicAllocation.maxExecutors": "10"
+    "spark.dynamicAllocation.initialExecutors": "2"
+    "spark.dynamicAllocation.executorIdleTimeout": "60s"
+    "spark.dynamicAllocation.schedulerBacklogTimeout": "1s"
+
+    # Memory management
+    "spark.memory.fraction": "0.6"
+    "spark.memory.storageFraction": "0.5"
+    "spark.sql.shuffle.partitions": "200"
+
+    # Networking timeouts
+    "spark.network.timeout": "120s"
+    "spark.executor.heartbeatInterval": "10s"
+
+    # Shuffle service disabled (common in k8s deployments)
+    "spark.shuffle.service.enabled": "false"
+
+  driver:
+    initContainers:
+      - name: volume-permission
+        image: busybox
+        command: ["sh", "-c", "chown -R 185:185 /recordings"]
+        volumeMounts:
+          - name: recording-storage
+            mountPath: "/recordings"
+        securityContext:
+          runAsUser: 0  # Run as root to change ownership
+    securityContext:
+      runAsUser: 185   # Run Spark as UID 185
+    cores: 2
+    memory: "4g"
+    memoryOverhead: "1g"
+    labels:
+      version: 3.4.0
+      app: spark-test
+    serviceAccount: spark
+    javaOptions: >-
+      -XX:-Inline
+      -XX:TieredStopAtLevel=1
+      -agentpath:/opt/agent/lr4j_agent_x64.so=save_on=always,save_callback_class=ExitHandler,save_callback_jar=/opt/spark/examples/jars/spark-test-app-assembly-0.1.0.jar
+    terminationGracePeriodSeconds: 30
+    volumeMounts:
+      - mountPath: "/recordings"
+        name: recording-storage
+        readOnly: false
+    env:
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: aws-credentials
+            key: aws-access-key-id
+            optional: true
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: aws-credentials
+            key: aws-secret-access-key
+            optional: true
+      - name: AWS_REGION
+        value: "eu-west-2"  # Replace with your preferred region
+
+  executor:
+    initContainers:
+      - name: volume-permission
+        image: busybox
+        command: ["sh", "-c", "chown -R 185:185 /recordings"]
+        volumeMounts:
+          - name: recording-storage
+            mountPath: "/recordings"
+        securityContext:
+          runAsUser: 0  # Run as root to change ownership
+    securityContext:
+      runAsUser: 185   # Run Spark as UID 185
+    cores: 2
+    instances: 2
+    memory: "4g"
+    memoryOverhead: "1g"
+    labels:
+      version: 3.4.0
+      app: spark-test
+    javaOptions: >-
+      -XX:-Inline
+      -XX:TieredStopAtLevel=1
+      -agentpath:/opt/agent/lr4j_agent_x64.so=save_on=always,save_callback_class=ExitHandler,save_callback_jar=/opt/spark/examples/jars/spark-test-app-assembly-0.1.0.jar
+    # this grace period needs to be large enough for the recordings to be copied - the pods will be killed after this time
+    terminationGracePeriodSeconds: 240
+    volumeMounts:
+      - mountPath: "/recordings"
+        name: recording-storage
+        readOnly: false
+    env:
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: aws-credentials
+            key: aws-access-key-id
+            optional: true
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: aws-credentials
+            key: aws-secret-access-key
+            optional: true
+      - name: AWS_REGION
+        value: "eu-west-2"  # Replace with your preferred region
+
+  volumes:
+    - name: recording-storage
+      persistentVolumeClaim:
+        claimName: spark-recording-pvc

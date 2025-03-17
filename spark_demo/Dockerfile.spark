@@ -1,0 +1,24 @@
+FROM apache/spark:3.4.0
+
+USER root
+
+# Create directory for the agent
+RUN mkdir -p /opt/agent
+
+# Copy the recording agent
+COPY lr4j_agent_x64.so /opt/agent/
+
+# Install additional libraries if needed
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set environment variables for AWS credentials
+ENV AWS_ACCESS_KEY_ID=""
+ENV AWS_SECRET_ACCESS_KEY=""
+ENV AWS_REGION="eu-west-2"
+
+# Switch back to spark user
+USER spark

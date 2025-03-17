@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: spark-recording-pvc  # The PVC name referenced in the Spark YAML
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteMany  # Allows multiple pods (driver + executors) to write
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: manual  # Must match the PersistentVolume storage class
